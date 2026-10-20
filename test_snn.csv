@@ -1,0 +1,2 @@
+mode,run,shape,delay,burstInterval,victim_loss_pct,victim_avg_delay_ms,victim_p95_delay_ms,flooder_loss_pct,flooder_served,slice_overshoot_s,mec_overshoot_s
+mmsnn,1,ramp,2,0.01,0,20.7271,28.9324,33.996,332,0.85456,0

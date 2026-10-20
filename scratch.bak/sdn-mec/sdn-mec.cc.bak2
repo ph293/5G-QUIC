@@ -1,0 +1,100 @@
+#include "ns3/core-module.h"
+#include "ns3/network-module.h"
+#include "ns3/internet-module.h"
+#include "ns3/point-to-point-module.h"
+#include "ns3/applications-module.h"
+#include "ns3/ipv4-global-routing-helper.h"
+#include "ns3/flow-monitor-module.h"
+#include "ns3/netanim-module.h"
+
+#include "topology-helper.h"
+#include "device-app.h"
+#include "mec-app.h"
+#include "controller-app.h"
+#include "cmbdq-model.h"
+#include "uno-optimizer.h"
+#include "metrics-collector.h"
+
+#include <iostream>
+
+using namespace ns3;
+using namespace sdnmec;
+
+NS_LOG_COMPONENT_DEFINE("SDNMECMain");
+
+int main(int argc, char* argv[])
+{
+  double duration = 15.0;
+  bool verbose = true;
+
+  CommandLine cmd;
+  cmd.AddValue("duration", "Simulation duration in seconds", duration);
+  cmd.AddValue("verbose", "Enable verbose logging", verbose);
+  cmd.Parse(argc, argv);
+
+  if (verbose) {
+    LogComponentEnable("SDNMECMain", LOG_LEVEL_INFO);
+  }
+
+  std::cout << "\n=========================================" << std::endl;
+  std::cout << "  SDN-MEC Framework for Industry 5.0" << std::endl;
+  std::cout << "  Adaptive Traffic Mgmt & Security Automation" << std::endl;
+  std::cout << "=========================================\n" << std::endl;
+  std::cout << "[MAIN] Creating topology with 6 devices, 2 SDN switches,"
+            << " 3 MEC servers, 1 controller..." << std::endl;
+
+  Topology topo = TopologyHelper::Create();
+
+  std::cout << "[MAIN] Installing MEC server applications..." << std::endl;
+  for (uint32_t i = 0; i < NUM_MEC_SERVERS; ++i) {
+    Ptr<MecServerApp> mecApp = CreateObject<MecServerApp>();
+    mecApp->Setup(i, 9000);
+    topo.mecServers.Get(i)->AddApplication(mecApp);
+    mecApp->SetStartTime(Seconds(0.5));
+    mecApp->SetStopTime(Seconds(duration));
+  }
+
+  std::cout << "[MAIN] Installing Industry 5.0 device applications..." << std::endl;
+  std::vector<Ptr<Industry5DeviceApp>> deviceApps;
+  for (uint32_t i = 0; i < NUM_DEVICES; ++i) {
+    std::vector<Ipv4Address> mecAddrs;
+    for (uint32_t m = 0; m < NUM_MEC_SERVERS; ++m) {
+      mecAddrs.push_back(topo.mecAddresses[m]);
+    }
+
+    Ptr<Industry5DeviceApp> devApp = CreateObject<Industry5DeviceApp>();
+    double rate = 0.3 + (i % 3) * 0.15;
+    devApp->Setup(i, mecAddrs, Seconds(rate), 512 + i * 128);
+    topo.devices.Get(i)->AddApplication(devApp);
+    devApp->SetStartTime(Seconds(1.0));
+    devApp->SetStopTime(Seconds(duration));
+    deviceApps.push_back(devApp);
+  }
+
+  std::cout << "[MAIN] Installing SDN controller application..." << std::endl;
+  Ptr<SDNControllerApp> ctrlApp = CreateObject<SDNControllerApp>();
+  ctrlApp->Setup(Seconds(3.0), Seconds(5.0), Seconds(2.0));
+  topo.controller.Get(0)->AddApplication(ctrlApp);
+  ctrlApp->SetStartTime(Seconds(1.0));
+  ctrlApp->SetStopTime(Seconds(duration));
+
+  std::cout << "[MAIN] Simulation configured. Duration: "
+            << duration << "s" << std::endl;
+
+  AnimationInterface anim("scratch/sdn-mec/sdn-mec-animation.xml");
+
+  Simulator::Stop(Seconds(duration + 0.5));
+
+  std::cout << "[MAIN] Running simulation..." << std::endl;
+  Simulator::Run();
+
+  std::cout << "\n[MAIN] Simulation completed. Collecting final metrics..."
+            << std::endl;
+  MetricsCollector::Get().PrintFinalSummary();
+  CMBDQModel::Get().PrintSummary();
+
+  Simulator::Destroy();
+
+  std::cout << "[MAIN] Done." << std::endl;
+  return 0;
+}
